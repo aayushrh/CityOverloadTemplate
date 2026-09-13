@@ -168,6 +168,14 @@ public class InputManager : MonoBehaviour, InputSystem_Actions.IPlayerActions
         }
     }
 
+    public void OnSwitchSeats(InputAction.CallbackContext context)
+    {
+        if (context.performed)
+        {
+            SwitchSeatPressed?.Invoke();
+        }
+    }
+
     public void OnCrouch(InputAction.CallbackContext context)
     {
         if (context.performed)
