@@ -13,9 +13,38 @@ public enum VanSeatRole
 }
 
 /// <summary>
+/// A seated player and the component state that has to be handed back when they get out.
+/// Passed between seats on a switch so the player is never un-suspended mid-transfer.
+/// </summary>
+public readonly struct SeatedPlayer
+{
+    public readonly GameObject Root;
+    public readonly PlayerMovement Movement;
+    public readonly CharacterController Controller;
+    public readonly PlayerInteractor Interactor;
+    public readonly Transform OriginalParent;
+    public readonly CinemachineCamera Camera;
+
+    public SeatedPlayer(GameObject root, PlayerMovement movement, CharacterController controller,
+                        PlayerInteractor interactor, Transform originalParent, CinemachineCamera camera)
+    {
+        Root = root;
+        Movement = movement;
+        Controller = controller;
+        Interactor = interactor;
+        OriginalParent = originalParent;
+        Camera = camera;
+    }
+
+    public bool IsValid => Root != null;
+}
+
+/// <summary>
 /// One entry point on a vehicle. Put this on a child of the <see cref="Van"/> with its own
-/// box collider on the <c>Interactable</c> layer — one per door. Interact to climb in,
-/// interact again to get out.
+/// box collider on the <c>Interactable</c> layer — one per door.
+///
+/// Interact to climb in. While seated, Interact gets out and
+/// <see cref="InputManager.SwitchSeatPressed"/> cycles to the next free seat.
 ///
 /// The seat handles the player side (snap, suspend movement, swap camera). Whether it
 /// <em>drives</em> is the <see cref="Van"/>'s decision, based on <see cref="Role"/>.
@@ -63,19 +92,14 @@ public class VanSeat : InteractableBase
     public bool IsOccupied => Occupant != null;
 
     private Van van;
+    private SeatedPlayer seated;
 
-    // Occupant state, restored on exit.
-    private PlayerMovement occupantMovement;
-    private PlayerInteractor occupantInteractor;
-    private CharacterController occupantController;
-    private Transform occupantOriginalParent;
-    private CinemachineCamera occupantCamera;
-
-    private CinemachineCamera ActiveCamera =>
+    /// <summary>This seat's view: its own camera, or the Van's fallback.</summary>
+    internal CinemachineCamera ActiveCamera =>
         seatCamera != null ? seatCamera : (van != null ? van.FallbackCamera : null);
 
     private InputManager input;
-    private int enteredOnFrame = -1;
+    private int occupiedOnFrame = -1;
     private Coroutine seatRoutine;
 
     public override string Prompt
@@ -114,85 +138,74 @@ public class VanSeat : InteractableBase
         Enter(interactor);
     }
 
-    // ------------------------------------------------------------------------
+    // ---- Entering from the world -------------------------------------------
 
     private void Enter(GameObject player)
     {
         if (seatAnchor == null) return;
 
-        occupantMovement = player.GetComponent<PlayerMovement>();
-        occupantController = player.GetComponent<CharacterController>();
-        occupantInteractor = player.GetComponent<PlayerInteractor>();
+        PlayerMovement movement = player.GetComponent<PlayerMovement>();
+        CharacterController controller = player.GetComponent<CharacterController>();
+        PlayerInteractor interactor = player.GetComponent<PlayerInteractor>();
 
-        Occupant = player;
-        enteredOnFrame = Time.frameCount;
+        CinemachineCamera cam = playerCamera != null
+            ? playerCamera
+            : player.GetComponentInChildren<CinemachineCamera>(includeInactive: true);
 
         // Suspend the controller before reparenting: an enabled CharacterController
         // overwrites transform writes and will drag the player back out of the seat.
-        if (occupantMovement != null) occupantMovement.enabled = false;
-        if (occupantController != null) occupantController.enabled = false;
+        if (movement != null) movement.enabled = false;
+        if (controller != null) controller.enabled = false;
 
-        // The interact ray starts at the player's eye, now inside the van, so it would
-        // focus the van's own geometry. Exit runs off the raw input instead.
-        if (occupantInteractor != null) occupantInteractor.enabled = false;
+        // The interact ray starts at the player's eye, now inside the van, so it would focus
+        // the van's own geometry. Exit and seat switching run off the raw input instead.
+        if (interactor != null) interactor.enabled = false;
 
-        occupantOriginalParent = player.transform.parent;
-        player.transform.SetParent(seatAnchor, worldPositionStays: true);
+        Occupy(new SeatedPlayer(player, movement, controller, interactor,
+                                player.transform.parent, cam));
 
-        if (seatBlendDuration > 0f)
+        // Hand the view to this seat. Only now that the seat camera is confirmed: disabling
+        // the only active camera would leave the brain nothing to blend to.
+        CinemachineCamera mine = ActiveCamera;
+        if (mine != null)
         {
-            if (seatRoutine != null) StopCoroutine(seatRoutine);
-            seatRoutine = StartCoroutine(BlendIntoSeat(player.transform));
+            mine.enabled = true;
+            if (seated.Camera != null) seated.Camera.enabled = false;
         }
-        else
-        {
-            player.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
-        }
-
-        SwapCamera(player, toVan: true);
-        BindExitInput();
 
         OnFocusExit();                       // nothing is aiming at this any more
-        // `?.` uses real null; a destroyed Van passes that check and throws, so use the
-        // Unity null operator instead.
-        if (van != null) van.SeatOccupied(this, player);   // the Van decides if this grants control
         onEntered?.Invoke(player);
         Entered?.Invoke(player);
     }
 
-    /// <summary>Get the occupant out. Safe to call from a cutscene, a UI button, or Van.EjectAll.</summary>
+    /// <summary>Get the occupant out. Safe from a cutscene, a UI button, or Van.EjectAll.</summary>
     public void Exit()
     {
         if (!IsOccupied) return;
 
-        GameObject player = Occupant;
-        Occupant = null;
+        SeatedPlayer leaving = seated;
+        Vacate();
 
-        if (seatRoutine != null)
+        // Hand the view back before the player starts steering it again.
+        CinemachineCamera mine = ActiveCamera;
+        if (mine != null)
         {
-            StopCoroutine(seatRoutine);
-            seatRoutine = null;
+            mine.enabled = false;
+            if (leaving.Camera != null) leaving.Camera.enabled = true;
         }
 
-        UnbindExitInput();
-
-        // Release control BEFORE re-enabling the player, so the van stops reading input
-        // in the same frame the player starts reading it again.
-        if (van != null) van.SeatVacated(this, player);
-
-        SwapCamera(player, toVan: false);
-
-        player.transform.SetParent(occupantOriginalParent, worldPositionStays: true);
+        GameObject player = leaving.Root;
+        player.transform.SetParent(leaving.OriginalParent, worldPositionStays: true);
 
         Transform target = exitPoint != null ? exitPoint : seatAnchor;
 
-        if (occupantController != null) occupantController.enabled = true;
-        if (occupantMovement != null)
+        if (leaving.Controller != null) leaving.Controller.enabled = true;
+        if (leaving.Movement != null)
         {
-            occupantMovement.enabled = true;
-            // SnapTo resyncs the cached yaw and clears momentum, so mouselook doesn't
-            // whip back to whatever the player was facing before it got in.
-            occupantMovement.SnapTo(target.position, target.eulerAngles.y);
+            leaving.Movement.enabled = true;
+            // SnapTo resyncs the cached yaw and clears momentum, so mouselook doesn't whip
+            // back to whatever the player was facing before it got in.
+            leaving.Movement.SnapTo(target.position, target.eulerAngles.y);
         }
         else
         {
@@ -200,16 +213,83 @@ public class VanSeat : InteractableBase
                                                     Quaternion.Euler(0f, target.eulerAngles.y, 0f));
         }
 
-        if (occupantInteractor != null) occupantInteractor.enabled = true;
-
-        occupantMovement = null;
-        occupantController = null;
-        occupantInteractor = null;
-        occupantCamera = null;
-        occupantOriginalParent = null;
+        if (leaving.Interactor != null) leaving.Interactor.enabled = true;
 
         onExited?.Invoke(player);
         Exited?.Invoke(player);
+    }
+
+    // ---- Switching seats ---------------------------------------------------
+
+    /// <summary>
+    /// Hand the occupant to another seat. Called by <see cref="Van.TransferOccupant"/> —
+    /// the player stays suspended throughout, never touching the ground.
+    /// </summary>
+    internal SeatedPlayer VacateForTransfer()
+    {
+        SeatedPlayer moving = seated;
+        Vacate();
+        return moving;
+    }
+
+    /// <summary>Receive an already-suspended occupant from <paramref name="from"/>.</summary>
+    internal void AcceptTransfer(in SeatedPlayer moving, VanSeat from)
+    {
+        CinemachineCamera previous = from != null ? from.ActiveCamera : null;
+
+        Occupy(moving);
+
+        // Seats often share one camera. Switch in that order, and skip the toggle entirely
+        // when it's the same object, so the brain never sees a frame with no active camera.
+        CinemachineCamera mine = ActiveCamera;
+        if (mine != null) mine.enabled = true;
+        if (previous != null && previous != mine) previous.enabled = false;
+    }
+
+    // ---- Shared occupancy core ---------------------------------------------
+
+    private void Occupy(in SeatedPlayer player)
+    {
+        seated = player;
+        Occupant = player.Root;
+        occupiedOnFrame = Time.frameCount;
+
+        player.Root.transform.SetParent(seatAnchor, worldPositionStays: true);
+
+        if (seatBlendDuration > 0f)
+        {
+            if (seatRoutine != null) StopCoroutine(seatRoutine);
+            seatRoutine = StartCoroutine(BlendIntoSeat(player.Root.transform));
+        }
+        else
+        {
+            player.Root.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
+        }
+
+        BindSeatInput();
+
+        // `?.` uses real null; a destroyed Van passes that check and throws, so use the
+        // Unity null operator instead. The Van decides whether this grants control.
+        if (van != null) van.SeatOccupied(this, player.Root);
+    }
+
+    private void Vacate()
+    {
+        if (seatRoutine != null)
+        {
+            StopCoroutine(seatRoutine);
+            seatRoutine = null;
+        }
+
+        UnbindSeatInput();
+
+        GameObject player = Occupant;
+        Occupant = null;
+        seated = default;
+
+        // Release control BEFORE the player is given back its own input, so there is no
+        // frame where both the van and the player are reading MoveInput.
+        if (van != null) van.SeatVacated(this, player);
     }
 
     private System.Collections.IEnumerator BlendIntoSeat(Transform player)
@@ -231,52 +311,50 @@ public class VanSeat : InteractableBase
         seatRoutine = null;
     }
 
-    // ---- Camera ------------------------------------------------------------
+    // ---- Input while seated ------------------------------------------------
 
-    private void SwapCamera(GameObject player, bool toVan)
+    private void BindSeatInput()
     {
-        CinemachineCamera target = ActiveCamera;
+        if (input != null) return;
 
-        // With no van-side camera, leave the player's alone — disabling the only active
-        // camera hands the brain nothing to blend to and the screen goes black.
-        if (target == null) return;
-
-        if (occupantCamera == null)
+        if (InputManager.Instance == null)
         {
-            occupantCamera = playerCamera != null
-                ? playerCamera
-                : player.GetComponentInChildren<CinemachineCamera>(includeInactive: true);
+            Debug.LogWarning($"{nameof(VanSeat)} '{name}': no InputManager in the scene, so the " +
+                             $"player can't interact to get out. Add one.", this);
+            return;
         }
 
-        // Enable/disable is enough: CinemachineBrain picks the highest-priority ACTIVE
-        // camera and blends using its Default Blend. No priority bookkeeping to drift.
-        target.enabled = toVan;
-        if (occupantCamera != null) occupantCamera.enabled = !toVan;
-    }
-
-    // ---- Exit input --------------------------------------------------------
-
-    private void BindExitInput()
-    {
-        if (InputManager.Instance == null) return;
         input = InputManager.Instance;
-        input.InteractPressed += OnExitPressed;
+        input.InteractPressed += OnInteractPressed;
+        input.SwitchSeatPressed += OnSwitchSeatPressed;
     }
 
-    private void UnbindExitInput()
+    private void UnbindSeatInput()
     {
         if (input == null) return;
-        input.InteractPressed -= OnExitPressed;
+        input.InteractPressed -= OnInteractPressed;
+        input.SwitchSeatPressed -= OnSwitchSeatPressed;
         input = null;
     }
 
-    private void OnExitPressed()
+    private void OnInteractPressed()
     {
         // The press that got the player in must not also get it out. C# events invoke a
-        // snapshot of the list so this shouldn't fire on the entry frame anyway — but
-        // relying on that is the kind of thing that breaks quietly.
-        if (Time.frameCount == enteredOnFrame) return;
+        // snapshot of the list so a handler added mid-invoke shouldn't fire this round —
+        // but relying on that is the kind of thing that breaks quietly.
+        if (Time.frameCount == occupiedOnFrame) return;
         Exit();
+    }
+
+    private void OnSwitchSeatPressed()
+    {
+        if (Time.frameCount == occupiedOnFrame) return;
+        if (van == null) return;
+
+        VanSeat next = van.NextFreeSeatAfter(this);
+        if (next == null) return;            // solo seat, or every other one is taken
+
+        van.TransferOccupant(this, next);
     }
 
     protected override void OnDisable()
@@ -289,7 +367,7 @@ public class VanSeat : InteractableBase
     private void OnDestroy()
     {
         if (IsOccupied) Exit();
-        UnbindExitInput();
+        UnbindSeatInput();
     }
 
     private void OnDrawGizmosSelected()

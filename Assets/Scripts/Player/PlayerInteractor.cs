@@ -30,6 +30,11 @@ public class PlayerInteractor : MonoBehaviour
     [Tooltip("Treat triggers as interactable surfaces. Off means trigger colliders are ignored.")]
     [SerializeField] private bool hitTriggers = false;
 
+    [Header("Debug")]
+    [Tooltip("Log what the ray hit and why it was or wasn't accepted. Turn this on first when " +
+             "interaction silently does nothing — it usually names a layer.")]
+    [SerializeField] private bool logHits = false;
+
     /// <summary>
     /// Fires when the focused target changes, with null when focus is lost.
     /// Subscribe from the HUD to show and hide the prompt.
@@ -49,6 +54,21 @@ public class PlayerInteractor : MonoBehaviour
     public string FocusPrompt => Focused != null ? Focused.Prompt : string.Empty;
 
     private InputManager input;
+
+    // 16 is generous for a 3m cast. If it ever fills, the nearest among what came back is
+    // still used — the cast just can't promise it saw everything.
+    private readonly RaycastHit[] hits = new RaycastHit[16];
+
+    private string lastLogged;
+
+    // FindTarget runs every frame, so log only when the outcome actually changes —
+    // otherwise turning this on buries the console.
+    private void LogOnce(string message, UnityEngine.Object context = null)
+    {
+        if (!logHits || message == lastLogged) return;
+        lastLogged = message;
+        Debug.Log($"[{name}] {message}", context != null ? context : this);
+    }
 
     private QueryTriggerInteraction TriggerMode =>
         hitTriggers ? QueryTriggerInteraction.Collide : QueryTriggerInteraction.Ignore;
@@ -70,10 +90,6 @@ public class PlayerInteractor : MonoBehaviour
         if (rayOrigin == null)
             Debug.LogError($"{nameof(PlayerInteractor)} on '{name}' has no ray origin: assign one, " +
                            $"or give the player a child camera or a PlayerMovement with a camera pivot.", this);
-
-        // The camera sits inside the CharacterController capsule, so a cast that includes
-        // the player's own layer hits the player first and blocks every interaction.
-        raycastMask &= ~(1 << gameObject.layer);
     }
 
     private void OnEnable() => TryBind();
@@ -110,30 +126,72 @@ public class PlayerInteractor : MonoBehaviour
     {
         component = null;
 
-        // One cast against interactables AND blockers. These overloads return the NEAREST
-        // hit (the NonAlloc ones do not), which is what makes a wall in between block the
-        // interaction instead of being cast straight through.
-        RaycastHit info;
-        bool hit = castRadius > 0f
-            ? Physics.SphereCast(rayOrigin.position, castRadius, rayOrigin.forward,
-                                 out info, range, raycastMask, TriggerMode)
-            : Physics.Raycast(rayOrigin.position, rayOrigin.forward,
-                              out info, range, raycastMask, TriggerMode);
-        if (!hit) return null;
+        // One cast against interactables AND blockers, so the nearest thing wins and a wall
+        // in between blocks the interaction instead of being cast straight through.
+        //
+        // Gather all hits rather than using the single-hit overloads: the ray starts at the
+        // player's own eye, inside its own colliders, and those have to be skipped BY
+        // HIERARCHY. Filtering the player out by layer instead would mean a player left on
+        // Default silently blinds the ray to every other Default object in the scene.
+        int count = castRadius > 0f
+            ? Physics.SphereCastNonAlloc(rayOrigin.position, castRadius, rayOrigin.forward,
+                                         hits, range, raycastMask, TriggerMode)
+            : Physics.RaycastNonAlloc(rayOrigin.position, rayOrigin.forward,
+                                      hits, range, raycastMask, TriggerMode);
+        if (count == 0)
+        {
+            LogOnce($"interact ray hit nothing within {range}m.");
+            return null;
+        }
 
-        Collider collider = info.collider;
-        if (collider == null) return null;
+        Collider nearest = null;
+        float nearestDistance = float.MaxValue;
+        for (int i = 0; i < count; i++)
+        {
+            Collider c = hits[i].collider;
+            if (c == null) continue;
 
-        // The nearest surface isn't on the interactable layer: something is in the way.
-        if ((interactableMask.value & (1 << collider.gameObject.layer)) == 0) return null;
+            // Our own body, including the capsule the eye sits inside.
+            if (c.transform.IsChildOf(transform)) continue;
+
+            if (hits[i].distance >= nearestDistance) continue;
+            nearestDistance = hits[i].distance;
+            nearest = c;
+        }
+
+        if (nearest == null)
+        {
+            LogOnce("interact ray hit only the player's own colliders.");
+            return null;
+        }
+
+        // The nearest surface isn't interactable: either it's a wall in the way, or the
+        // target is sitting on the wrong layer.
+        if ((interactableMask.value & (1 << nearest.gameObject.layer)) == 0)
+        {
+            LogOnce($"nearest hit '{nearest.name}' is on layer {nearest.gameObject.layer} " +
+                    $"({LayerMask.LayerToName(nearest.gameObject.layer)}), which is not in " +
+                    $"Interactable Mask. Either it's blocking the view, or it needs moving to " +
+                    $"an interactable layer.", nearest);
+            return null;
+        }
 
         // Search upward so a child collider on a composite prop still resolves to the
         // component that owns the behaviour.
-        var interactable = collider.GetComponentInParent<IInteractable>();
+        var interactable = nearest.GetComponentInParent<IInteractable>();
 
         // Require a Component so focus can be validated against Unity's lifetime checks.
         component = interactable as Component;
-        return component != null ? interactable : null;
+
+        if (component == null)
+        {
+            LogOnce($"'{nearest.name}' is on an interactable layer but has no IInteractable " +
+                    $"on it or any parent.", nearest);
+            return null;
+        }
+
+        LogOnce($"focused '{component.name}' at {nearestDistance:0.00}m.", component);
+        return interactable;
     }
 
     private void SetFocus(IInteractable next, Component nextComponent)

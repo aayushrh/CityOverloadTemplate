@@ -148,9 +148,9 @@ GameObject:
   - component: {fileID: 7546699504492588085}
   - component: {fileID: 2054205077270143671}
   - component: {fileID: 7272734730252156184}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: DoorPassenger
-  m_TagString: Untagged
+  m_TagString: Interactable
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -440,9 +440,9 @@ GameObject:
   - component: {fileID: 8095185575643531554}
   - component: {fileID: 8372264723856209330}
   - component: {fileID: 3593923947364163982}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: DoorDriver
-  m_TagString: Untagged
+  m_TagString: Interactable
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0

@@ -52,6 +52,19 @@ public class InputManager : MonoBehaviour, InputSystem_Actions.IPlayerActions
     public event UnityAction InteractPressed;
     public event UnityAction InteractReleased;
 
+    /// <summary>
+    /// Cycle to the next vehicle seat. No input action is bound to this yet — raise it with
+    /// <see cref="RaiseSwitchSeat"/> from a UI button or your own binding.
+    ///
+    /// To drive it from the Input System later: add a <c>SwitchSeat</c> button action to the
+    /// Player map, let Unity regenerate the wrapper, then forward the new
+    /// <c>OnSwitchSeat</c> callback to <see cref="RaiseSwitchSeat"/>.
+    /// </summary>
+    public event UnityAction SwitchSeatPressed;
+
+    /// <summary>Raise <see cref="SwitchSeatPressed"/>. Safe to call when nothing is listening.</summary>
+    public void RaiseSwitchSeat() => SwitchSeatPressed?.Invoke();
+
     private void Awake()
     {
         // Destroy the duplicate, not the manager that is already live and subscribed to.

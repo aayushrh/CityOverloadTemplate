@@ -106,11 +106,21 @@ camera each frame, tracks focus, and forwards the Interact button.
 wins — a wall between you and a switch only blocks the interaction if the wall's layer is in
 the mask. A mask of Interactable alone lets you press buttons through walls.
 
-**Put the Player on the `Player` layer.** The camera sits inside the CharacterController
-capsule, so a cast that can hit the player's own collider hits it at distance ~0 and nothing
-is ever interactable. `PlayerInteractor` strips its own GameObject's layer from the mask at
-`Awake` to cover this, but it only works if the player isn't sharing a layer with your
-geometry. This is the same layer to exclude from `PlayerMovement`'s **Ground Mask**.
+**The target object itself must be on the Interactable layer** — not just its parent. The cast
+takes the nearest hit and checks *that collider's* layer against Interactable Mask; a door
+collider left on Default is rejected before anything looks for an `IInteractable`, and it fails
+completely silently. Turn on `PlayerInteractor`'s **Log Hits** when interaction does nothing: it
+names the offending layer, and logs only when the outcome changes so it won't flood the console.
+
+**Don't put the whole vehicle on Interactable** — the body collider has to stay a blocker, or
+you can interact through it from the far side. Only the door children move layer.
+
+**The player excludes itself by hierarchy, not by layer.** The ray starts at the eye, inside the
+player's own capsule, so hits belonging to the player's transform hierarchy are skipped. An
+earlier version stripped the player's layer from Raycast Mask instead, which meant a player left
+on Default silently blinded the ray to every other Default object — gone now. Putting the Player
+on the `Player` layer is still worth doing for `PlayerMovement`'s **Ground Mask**, which should
+exclude it.
 
 ### HUD
 
@@ -124,71 +134,193 @@ after a successful interaction, for a click sound or a camera nudge.
 
 ## Riding the van
 
-**`Assets/Scripts/Interaction/VanInteractable.cs`** — derives from `InteractableBase`. Interact
-to snap into a seat, interact again to get out, and the view blends to the van's Cinemachine
-camera in between. It's a ride-along seat; it does not drive. `Occupant`, `Entered` and `Exited`
-are the hooks a driving script would use to start consuming `InputManager.Instance.MoveInput`.
+Three scripts in `Assets/Scripts/Vehicle/`, split by responsibility:
 
-### Cinemachine rearrangement this requires
+| Script | Lives on | Job |
+|---|---|---|
+| `Van` | van root | Owns the seat list, decides who drives |
+| `VanSeat` | one per door, each with its own box collider | Entry point: snap, suspend the player, swap camera |
+| `VanController` | van root, beside the Rigidbody | Movement. Disabled until the driver seat fills |
 
-This is the part that isn't obvious. `CinemachineBrain` **owns the transform of the Camera it
-sits on**, so the real Camera can no longer be a child of `CameraPivot` — the brain and the
-pivot would fight over it every frame. Restructure to:
+`VanInteractable.cs` is superseded by these — **delete it**, it's dead code now.
+
+### Hierarchy
 
 ```
-Main Camera            Camera + CinemachineBrain     ← scene root, NOT under the player
-Player                 CharacterController + PlayerMovement + PlayerInteractor
-└── CameraPivot        pitch goes here
-    └── PlayerCam      CinemachineCamera
-Van                    VanInteractable + collider, on the Interactable layer
-├── SeatAnchor         empty, where the player sits
-├── ExitPoint          empty, where the player is put down
-└── VanCam             CinemachineCamera
+Main Camera             Camera + CinemachineBrain     <- scene root, NOT under the player
+Player                  CharacterController + PlayerMovement + PlayerInteractor
+└── CameraPivot         pitch goes here
+    └── PlayerCam       CinemachineCamera
+
+Van                     Rigidbody + Van + VanController + body collider
+├── Door_Driver         BoxCollider (Interactable layer) + VanSeat  [Role: Driver]
+│   ├── Seat_Driver
+│   └── Exit_Driver
+├── Door_Passenger      BoxCollider (Interactable layer) + VanSeat  [Role: Passenger]
+│   ├── Seat_Passenger
+│   └── Exit_Passenger
+├── Door_RearLeft       BoxCollider (Interactable layer) + VanSeat  [Role: Passenger]
+│   └── ...
+└── DriverCam           CinemachineCamera
 ```
 
-On `PlayerCam`, set **Tracking Target** to `CameraPivot` with both Position and Rotation
-Control set to follow it — the pivot stays the thing mouselook rotates, and Cinemachine just
-mirrors it.
+One `VanSeat` per door, each on its own GameObject with its own box collider sized to the door.
+That's what makes them separately aimable — `PlayerInteractor` resolves whichever collider the
+ray hit up to its own seat, so three doors are three distinct prompts.
 
-Because there's no longer a plain `Camera` under the player, auto-find can't work:
-`PlayerMovement` needs **Camera Pivot** assigned explicitly. `PlayerInteractor` falls back to
-`PlayerMovement.CameraPivot`, so it's fine either way.
+### Who gets control
+
+`Role` on each seat is `Driver` or `Passenger`. Taking the Driver seat calls
+`VanController.TakeControl`; vacating it calls `ReleaseControl`. Passengers never drive, no
+matter how many are aboard — so a full van still has exactly one driver. `Van` warns at
+`Awake` if no seat is set to Driver, or if more than one is (the first wins).
+
+Passenger seats are otherwise identical: they snap, suspend the player, and swap camera. Give
+each one its own **Seat Camera** for a distinct view, or leave it empty to use the Van's
+**Fallback Camera**.
 
 ### Van inspector
 
 | Field | Value |
 |---|---|
-| Seat Anchor | `SeatAnchor` (required) |
-| Exit Point | `ExitPoint` — where the player lands, facing its forward |
-| Van Camera | `VanCam` |
-| Player Camera | leave empty; found from the player on first entry |
-| Seat Blend Duration | `0.25` — slides into the seat; `0` snaps |
+| Controller | auto-found if empty |
+| Seats | leave empty to collect every child `VanSeat`, or list them for explicit order |
+| Fallback Camera | `DriverCam` — used by any seat without its own |
 
-Blend *between* cameras is Cinemachine's, not this script's: set it on the brain's **Default
-Blend**. The swap just toggles `enabled` on the two cameras, so the brain picks the highest
-priority active one — no priority bookkeeping to get out of sync.
+### VanController tuning
 
-### Two ordering details that matter
+| | |
+|---|---|
+| Max Speed / Reverse | 14 / 5 m/s (~50 km/h forward) |
+| Acceleration | 8 m/s per second |
+| Brake / Engine braking | 18 / 3 |
+| Max Turn Rate | 75 deg/s at full lock |
+| Full Steer Speed | 5 m/s — below this, steering tapers off |
+| Lateral Grip | 12 — lower slides, higher rails |
+| Handbrake | Jump (Space) |
 
-**The CharacterController is disabled before reparenting.** An enabled `CharacterController`
-overwrites transform writes during its own update, so a player parented to a moving seat with
-it still on gets dragged back out.
+It drives the Rigidbody's velocity directly rather than using WheelColliders: stable, tunable,
+and indifferent to suspension setup. Right for a city van, wrong for a racing game.
 
-**Exit goes through `PlayerMovement.SnapTo`, not `transform.position`.** `PlayerMovement` caches
-yaw internally; writing the transform directly leaves that cache stale and mouselook whips back
-to the pre-van heading on the first frame. `SnapTo(position, yaw)` moves the player, resyncs the
-yaw and clears momentum. Use it for teleports too.
+**Set the Rigidbody's Interpolation to `Interpolate`.** Physics runs at the fixed timestep and
+the camera renders between steps, so without it the view judders while driving — and since the
+player is parented into the van, the judder is very visible.
+
+Also: give the van a mass in the 1200–2000 range, lower the Center of Mass if it feels tippy,
+and leave Is Kinematic off (`VanController` warns if it's on, since velocity writes do nothing
+on a kinematic body).
+
+### Three ordering details that matter
+
+**Steering scales with speed.** `speedFactor` ramps in up to Full Steer Speed, and the sign
+flips below zero so reversing steers the way a car does. Without the ramp a stationary van
+spins on the spot like a turret.
+
+**Throttle against the direction of travel brakes rather than instantly reversing.** Pressing S
+at 14 m/s forward decelerates; reverse engages only once roughly stopped.
+
+**Exit releases van control before re-enabling the player.** `VanSeat.Exit` calls
+`Van.SeatVacated` first, so there's no frame where both the van and the player are reading
+`MoveInput` and the player walks while the van is still rolling.
+
+### Cinemachine rearrangement this requires
+
+`CinemachineBrain` **owns the transform of the Camera it sits on**, so the real Camera cannot be
+a child of `CameraPivot` — the brain and the pivot would fight over it every frame. Hence the
+`Main Camera` at scene root above.
+
+On `PlayerCam`, set **Tracking Target** to `CameraPivot` with both Position and Rotation Control
+following it: the pivot stays what mouselook rotates, and Cinemachine mirrors it.
+
+Because there's no plain `Camera` under the player any more, **assign `PlayerMovement`'s Camera
+Pivot by hand** — auto-find has nothing to find. `PlayerInteractor` falls back to
+`PlayerMovement.CameraPivot`, so it's covered either way.
+
+Blending between views is Cinemachine's job, not these scripts': set it on the brain's
+**Default Blend**. The swap just toggles `enabled` on two cameras and lets the brain pick the
+highest-priority active one — no priority bookkeeping to drift out of sync.
+
+### Two player-side details
+
+**The CharacterController is disabled before reparenting.** While enabled it overwrites
+transform writes during its own update, so a player parented to a moving seat with it still on
+gets dragged back out.
+
+**Exit goes through `PlayerMovement.SnapTo`, never `transform.position`.** `PlayerMovement`
+caches yaw internally; writing the transform directly leaves that stale and mouselook whips back
+to the pre-van heading on the first frame. `SnapTo(position, yaw)` moves, resyncs yaw, and
+clears momentum. Use it for teleports too.
 
 ### Looking around while seated
 
-`PlayerMovement` is disabled while riding, so the player's own look is off. To look around from
-the seat, put `CinemachinePanTilt` + `CinemachineInputAxisController` on `VanCam` and point the
-axis controller at the `Look` action — Cinemachine then drives the view directly and the seated
-player keeps head movement without `PlayerMovement` running.
+`PlayerMovement` is disabled while riding, so the player's own look is off. Put
+`CinemachinePanTilt` + `CinemachineInputAxisController` on the seat camera and point the axis
+controller at the `Look` action — Cinemachine drives the view directly and the seated player
+keeps head movement without `PlayerMovement` running. For the driver, this is also how you get
+a look-around-while-driving camera, since `Move` goes to the van and `Look` stays free.
 
-### Exit input is bound directly, not through the interactor
+### Seated input: exit and seat switching
 
-While seated, the interact ray starts at the player's eye — which is inside the van — so it
-would focus the van's own geometry or nothing at all. `PlayerInteractor` is switched off on
-entry and `VanInteractable` subscribes to `InputManager.InteractPressed` itself, with a
-frame-number guard so the keypress that got the player in can't also get it out.
+While seated the interact ray starts at the player's eye — inside the van — so it would focus
+the van's own geometry or nothing. `PlayerInteractor` is switched off on entry, and the occupied
+`VanSeat` subscribes to the raw input instead:
+
+| Input | Effect |
+|---|---|
+| `InteractPressed` | Exit to this seat's Exit Point |
+| `SwitchSeatPressed` | Cycle to the next free seat |
+
+Both carry a frame-number guard, so the keypress that got the player in can't immediately get
+them out again, and one switch press can't cascade through every seat.
+
+### Cycling seats
+
+`Van.NextFreeSeatAfter(seat)` walks the **Seats list** in order and wraps: 0 → 1 → 2 → 0.
+Occupied and locked seats are skipped rather than stopping the cycle, and the walk stops before
+returning to the starting seat, so it always terminates and returns null when nothing else is
+free. List order is the cycle order — reorder the list to change it.
+
+`Van.TransferOccupant(from, to)` does the move. This is deliberately **not** exit-then-enter:
+the player stays suspended and parented the whole way, never touching the ground, so you can
+switch seats in a moving van. The player's component state travels between seats as a
+`SeatedPlayer` struct rather than being torn down and rebuilt.
+
+Switching out of the driver seat calls `ReleaseControl`, so the van brakes to a stop while
+you're in the back. Switching into it calls `TakeControl` again.
+
+Seats commonly share one camera (both of yours point at the same `CinemachineCamera`). The
+transfer checks for that and skips the toggle when the two seats resolve to the same camera, so
+the brain never sees a frame with nothing active.
+
+### Binding the seat-switch button
+
+`InputManager.SwitchSeatPressed` exists but **nothing raises it yet** — that's the part left
+for you. Two ways in:
+
+```csharp
+InputManager.Instance.RaiseSwitchSeat();   // from a UI button, or your own binding
+```
+
+Or wire it to the Input System properly: add a `SwitchSeat` button action to the Player map,
+let Unity regenerate the wrapper, then forward the new callback:
+
+```csharp
+public void OnSwitchSeat(InputAction.CallbackContext context)
+{
+    if (context.performed) SwitchSeatPressed?.Invoke();
+}
+```
+
+### New on InputManager
+
+- `JumpHeld` — held bool alongside the `JumpPressed`/`JumpReleased` events. `VanController`
+  uses it as the handbrake.
+- `SwitchSeatPressed` + `RaiseSwitchSeat()` — see above.
+
+### Known limit: multiplayer
+
+Every occupied seat subscribes to the same local input events, so in a networked session with
+two players aboard, one player's Interact press would exit both. Gating this on PurrNet
+ownership — the seat only binds input for the locally-owned player — is the fix when you get
+there.
+

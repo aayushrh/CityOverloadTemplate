@@ -108,4 +108,45 @@ public class Van : MonoBehaviour
                 return seat;
         return null;
     }
+
+    // ---- Seat cycling ------------------------------------------------------
+
+    /// <summary>
+    /// The next free seat after <paramref name="from"/> in list order, wrapping around:
+    /// 0 -> 1 -> 2 -> 0. Null when <paramref name="from"/> is the only usable seat.
+    /// Occupied and non-interactable seats are skipped rather than blocking the cycle.
+    /// </summary>
+    public VanSeat NextFreeSeatAfter(VanSeat from)
+    {
+        int start = seats.IndexOf(from);
+        if (start < 0) return null;
+
+        // Walk the whole ring once, starting one past `from`, and stop before coming back
+        // to it — so the wrap is free but the search always terminates.
+        for (int step = 1; step < seats.Count; step++)
+        {
+            VanSeat candidate = seats[(start + step) % seats.Count];
+            if (candidate == null || candidate == from) continue;
+            if (candidate.IsOccupied) continue;
+            if (!candidate.CanInteract) continue;    // respects a locked or disabled seat
+            return candidate;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Move a seated player between two seats without putting them on the ground. The player
+    /// stays suspended throughout, so this is not exit-then-enter.
+    /// </summary>
+    public bool TransferOccupant(VanSeat from, VanSeat to)
+    {
+        if (from == null || to == null || from == to) return false;
+        if (!from.IsOccupied || to.IsOccupied) return false;
+
+        SeatedPlayer moving = from.VacateForTransfer();
+        if (!moving.IsValid) return false;
+
+        to.AcceptTransfer(moving, from);
+        return true;
+    }
 }
