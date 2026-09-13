@@ -259,6 +259,9 @@ GameObject:
   - component: {fileID: 3752946532652768260}
   - component: {fileID: 8943910110664428364}
   - component: {fileID: 4900591844314722217}
+  - component: {fileID: 7304947986121103054}
+  - component: {fileID: 5924685940531741057}
+  - component: {fileID: 8893705993439533600}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -368,6 +371,126 @@ MonoBehaviour:
     m_Bits: 256
   hitTriggers: 0
   logHits: 1
+--- !u!114 &7304947986121103054
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7249665236986708555}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 39d5e4b97b1615f4aae984a3d5f4235f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PurrNet.Runtime::PurrNet.NetworkOwnershipToggle
+  _networkRules: {fileID: 0}
+  _visitiblityRules: {fileID: 0}
+  _isSetup: 0
+  _prefabId: -2147483648
+  _hasPrefabScope: 0
+  _prefabScope: 0
+  _componentIndex: -2147483648
+  _shouldBePooled: 0
+  _parent: {fileID: 0}
+  _invertedPathToNearestParent: 
+  _directChildren: []
+  _components:
+  - target: {fileID: 4900591844314722217}
+    activeAsOwner: 0
+  - target: {fileID: 8943910110664428364}
+    activeAsOwner: 0
+  - target: {fileID: 592831256902583627}
+    activeAsOwner: 0
+  _gameObjects: []
+  _applyInLateUpdate: 0
+  _toActivate: []
+  _toDeactivate: []
+  _toEnable: []
+  _toDisable: []
+--- !u!114 &5924685940531741057
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7249665236986708555}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d497b70c6fb6adc46b663609bee66dfd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PurrNet.Runtime::PurrNet.NetworkRigidbody
+  _networkRules: {fileID: 0}
+  _visitiblityRules: {fileID: 0}
+  _isSetup: 0
+  _prefabId: -2147483648
+  _hasPrefabScope: 0
+  _prefabScope: 0
+  _componentIndex: -2147483648
+  _shouldBePooled: 0
+  _parent: {fileID: 0}
+  _invertedPathToNearestParent: 
+  _directChildren: []
+  _debugGizmos: 0
+  _debugTextOffset: 2
+  _ownerAuth: 1
+  _space: 0
+  _syncParent: 1
+  _syncVelocityRelativeToParent: 1
+  _useParentFramePositionError: 0
+  _settingsOverride: {fileID: 0}
+  _interpolationDelay: 0.05
+  _autoInterpolationDelay: 1
+  _predictionFactor: 0
+  _maxExtrapolationDuration: 0.25
+  _positionStrength: 5
+  _correctionRange: 2
+  _rotationCorrection: 0
+  _rotationStrength: 12
+  _hardSnapDistance: 3
+  _resetLinearVelocityOnSnap: 0
+  _hardSnapAngle: 120
+  _resetAngularVelocityOnSnap: 0
+  _acceptableRotationError: 1
+  _stallRecoveryDelay: 0.25
+  _settledSnapPositionError: 0.01
+  _hardSnapOnStall: 0
+  _positionChangeThreshold: 0.001
+  _rotationChangeThreshold: 0.001
+  _velocityStopThreshold: 0.001
+--- !u!114 &8893705993439533600
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7249665236986708555}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 817fe5016bd0a2a49a95b6eb338bb132, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PurrNet.Runtime::PurrNet.NetworkTransform
+  _networkRules: {fileID: 0}
+  _visitiblityRules: {fileID: 0}
+  _isSetup: 0
+  _prefabId: -2147483648
+  _hasPrefabScope: 0
+  _prefabScope: 0
+  _componentIndex: -2147483648
+  _shouldBePooled: 0
+  _parent: {fileID: 0}
+  _invertedPathToNearestParent: 
+  _directChildren: []
+  _syncPosition: 2
+  _syncRotation: 2
+  _syncScale: 1
+  _syncParent: 1
+  _interpolateSettings: 7
+  _minBufferSize: 1
+  _maxBufferSize: 2
+  _characterControllerPatch: 0
+  _ownerAuth: 1
+  _interpolationTiming: 0
+  _adaptiveSynchronization: 2
 --- !u!1 &8064972073545789525
 GameObject:
   m_ObjectHideFlags: 0
@@ -380,6 +503,8 @@ GameObject:
   - component: {fileID: 7082394264354937547}
   - component: {fileID: 4857668042694791674}
   - component: {fileID: 2788107533442890392}
+  - component: {fileID: 6612504872521468043}
+  - component: {fileID: 5322634216921543693}
   m_Layer: 0
   m_Name: Sphere
   m_TagString: Untagged
@@ -480,3 +605,67 @@ SphereCollider:
   serializedVersion: 3
   m_Radius: 0.5
   m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &6612504872521468043
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8064972073545789525}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 817fe5016bd0a2a49a95b6eb338bb132, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PurrNet.Runtime::PurrNet.NetworkTransform
+  _networkRules: {fileID: 0}
+  _visitiblityRules: {fileID: 0}
+  _isSetup: 0
+  _prefabId: -2147483648
+  _hasPrefabScope: 0
+  _prefabScope: 0
+  _componentIndex: -2147483648
+  _shouldBePooled: 0
+  _parent: {fileID: 0}
+  _invertedPathToNearestParent: 
+  _directChildren: []
+  _syncPosition: 2
+  _syncRotation: 2
+  _syncScale: 1
+  _syncParent: 1
+  _interpolateSettings: 7
+  _minBufferSize: 1
+  _maxBufferSize: 2
+  _characterControllerPatch: 0
+  _ownerAuth: 1
+  _interpolationTiming: 0
+  _adaptiveSynchronization: 2
+--- !u!114 &5322634216921543693
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8064972073545789525}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 39d5e4b97b1615f4aae984a3d5f4235f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PurrNet.Runtime::PurrNet.NetworkOwnershipToggle
+  _networkRules: {fileID: 0}
+  _visitiblityRules: {fileID: 0}
+  _isSetup: 0
+  _prefabId: -2147483648
+  _hasPrefabScope: 0
+  _prefabScope: 0
+  _componentIndex: -2147483648
+  _shouldBePooled: 0
+  _parent: {fileID: 0}
+  _invertedPathToNearestParent: 
+  _directChildren: []
+  _components: []
+  _gameObjects: []
+  _applyInLateUpdate: 0
+  _toActivate: []
+  _toDeactivate: []
+  _toEnable: []
+  _toDisable: []
