@@ -434,11 +434,11 @@ MonoBehaviour:
   _parent: {fileID: 0}
   _invertedPathToNearestParent: 
   _directChildren: []
-  _syncPosition: 2
-  _syncRotation: 2
+  _syncPosition: 1
+  _syncRotation: 1
   _syncScale: 1
-  _syncParent: 1
-  _interpolateSettings: 1
+  _syncParent: 0
+  _interpolateSettings: 255
   _minBufferSize: 1
   _maxBufferSize: 2
   _characterControllerPatch: 0
@@ -472,7 +472,7 @@ MonoBehaviour:
   _debugTextOffset: 2
   _ownerAuth: 1
   _space: 0
-  _syncParent: 1
+  _syncParent: 0
   _syncVelocityRelativeToParent: 1
   _useParentFramePositionError: 0
   _settingsOverride: {fileID: 0}
