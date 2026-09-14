@@ -396,12 +396,12 @@ MonoBehaviour:
   _directChildren: []
   _components:
   - target: {fileID: 4900591844314722217}
-    activeAsOwner: 0
+    activeAsOwner: 1
   - target: {fileID: 8943910110664428364}
-    activeAsOwner: 0
+    activeAsOwner: 1
   _gameObjects:
   - target: {fileID: 7031431758831052230}
-    activeAsOwner: 0
+    activeAsOwner: 1
   - target: {fileID: 8064972073545789525}
     activeAsOwner: 0
   - target: {fileID: 2361841903213285736}
