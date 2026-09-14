@@ -402,6 +402,10 @@ MonoBehaviour:
   _gameObjects:
   - target: {fileID: 7031431758831052230}
     activeAsOwner: 0
+  - target: {fileID: 8064972073545789525}
+    activeAsOwner: 0
+  - target: {fileID: 2361841903213285736}
+    activeAsOwner: 0
   _applyInLateUpdate: 0
   _toActivate: []
   _toDeactivate: []
@@ -434,7 +438,7 @@ MonoBehaviour:
   _syncRotation: 2
   _syncScale: 1
   _syncParent: 1
-  _interpolateSettings: 7
+  _interpolateSettings: 1
   _minBufferSize: 1
   _maxBufferSize: 2
   _characterControllerPatch: 0
